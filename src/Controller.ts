@@ -107,7 +107,7 @@ export class MainController {
 		});
 
 		const circleState = this.stateMananger.get("circle", {
-			mode: CircleModes.thick,
+			mode: CircleModes.thin,
 			width: 13,
 			height: 13,
 			force: true,
