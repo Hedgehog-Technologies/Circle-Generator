@@ -162,7 +162,7 @@ export class Circle implements GeneratorInterface2D, ControlAwareInterface {
 			// 	return filled(x, y, (bounds.maxX / 2), bounds.maxX / bounds.maxY);
 			// }
 			default: {
-				console.error(`Unknown mode: ${this.mode}`);
+				console.error(`Unknown circle mode: ${this.mode}`);
 				throw new NeverError(this.mode);
 			}
 		}

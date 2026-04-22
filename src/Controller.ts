@@ -8,7 +8,8 @@ import { GeneratorInterface2D } from "./Generators/GeneratorInterface2D";
 import { SvgRenderer } from "./Renderers/SvgRenderer";
 import { RendererInterface } from "./Renderers/RendererInterface";
 import { Circle, CircleModes } from "./Generators/Circle";
-import { StateHandler } from "./State";
+import { Sphere, SphereModes } from "./Generators/Sphere";
+import { StateHandler, StateItem } from "./State";
 
 export interface Control<T extends HTMLElement = HTMLElement> {
 	element: T;
@@ -91,22 +92,34 @@ export class MainController {
 
 	private stateMananger = new StateHandler();
 
-	private generator: GeneratorInterface2D;
+	private generator!: GeneratorInterface2D;
+	private shapeTypeState!: StateItem<{ type: 'circle' | 'sphere' }>;
 
 	private renderer: RendererInterface;
 
 	constructor(private controls: HTMLElement, private result: HTMLElement) {
-		const svgState = this.stateMananger.get("svgRenderer", {
-			scale: 500,
-		});
+		const svgState = this.stateMananger.get("svgRenderer", { scale: 500, });
 		const svgRenderer = new SvgRenderer(svgState.get('scale'));
 		this.renderer = svgRenderer;
 
 		svgRenderer.changeEmitter.add((e) => {
 			svgState.set('scale', e.scale);
 		});
+		this.renderer.changeEmitter.add(() => { this.render(); });
 
-		const circleState = this.stateMananger.get("circle", {
+		this.shapeTypeState = this.stateMananger.get('shapeType', { type: 'circle' });
+
+		if (this.shapeTypeState.get('type') === 'sphere') {
+			this.initSphere();
+		} else {
+			this.initCircle(true);
+		}
+
+		this.makeResultDraggable();
+	}
+	
+	private initCircle(allowDialog: boolean): void {
+		const circleState = this.stateMananger.get('circle', {
 			mode: CircleModes.thin,
 			width: 13,
 			height: 13,
@@ -116,14 +129,9 @@ export class MainController {
 		const w = circleState.get('width');
 		const h = circleState.get('height');
 
-		const circle = new Circle(
-			w, h,
-			circleState.get('mode'),
-			circleState.get('force'),
-		);
+		const circle = new Circle(w, h, circleState.get('mode'), circleState.get('force'));
 		this.generator = circle;
 		this.generator.changeEmitter.add(() => { this.render(); });
-		this.renderer.changeEmitter.add(() => { this.render(); });
 
 		circle.changeEmitter.add((e) => {
 			circleState.set('mode', e.state.mode);
@@ -132,8 +140,7 @@ export class MainController {
 			circleState.set('force', e.state.force);
 		});
 
-		if (w * h > 200 * 200) {
-			// @todo make it's own class/control
+		if (allowDialog && w * h > 200 * 200) {
 			const dlg = document.createElement('dialog');
 			dlg.innerText = `Do you want to re-render the saved ${w} x ${h} shape? This may take a while or freeze.`;
 
@@ -143,10 +150,12 @@ export class MainController {
 			const btnYes = document.createElement('button');
 			btnYes.value = 'yes';
 			btnYes.innerText = 'Yes';
+			btnYes.addEventListener('click', () => dlg.close('yes'));
 
 			const btnNo = document.createElement('button');
-			btnNo.innerText = 'No';
 			btnNo.value = 'no';
+			btnNo.innerText = 'No';
+			btnNo.addEventListener('click', () => dlg.close('no'));
 
 			frm.appendChild(btnYes);
 			frm.appendChild(btnNo);
@@ -156,8 +165,9 @@ export class MainController {
 
 			dlg.appendChild(frm);
 
-			dlg.addEventListener("close", () => {
-				if (dlg.returnValue === "yes") {
+			dlg.addEventListener('close', () => {
+				document.body.removeChild(dlg);
+				if (dlg.returnValue === 'yes') {
 					this.renderControls();
 					this.render();
 				} else {
@@ -167,15 +177,47 @@ export class MainController {
 				}
 			});
 
-			result.appendChild(dlg);
+			document.body.appendChild(dlg);
 			dlg.showModal();
 			return;
 		}
 
 		this.renderControls();
 		this.render();
+	}
 
-		this.makeResultDraggable();
+	private initSphere(): void {
+		const sphereState = this.stateMananger.get('sphere', {
+			mode: SphereModes.thin,
+			width: 13,
+			height: 13,
+			depth: 13,
+			force: true,
+			layer: 6,
+		});
+
+		const sphere = new Sphere(
+			sphereState.get('width'),
+			sphereState.get('height'),
+			sphereState.get('depth'),
+			sphereState.get('mode'),
+			sphereState.get('force'),
+			sphereState.get('layer'),
+		);
+		this.generator = sphere;
+		this.generator.changeEmitter.add(() => { this.render(); });
+
+		sphere.changeEmitter.add((e) => {
+			sphereState.set('mode', e.state.mode);
+			sphereState.set('width', e.state.width);
+			sphereState.set('height', e.state.height);
+			sphereState.set('depth', e.state.depth);
+			sphereState.set('force', e.state.force);
+			sphereState.set('layer', e.state.layer);
+		});
+
+		this.renderControls();
+		this.render();
 	}
 
 	private makeResultDraggable() {
@@ -214,6 +256,35 @@ export class MainController {
 
 	private renderControls() {
 		this.controls.innerHTML = '';
+
+		// Shape type selector
+		const shapeGroup = document.createElement('fieldset');
+		const shapeLegend = document.createElement('legend');
+		shapeLegend.innerText = 'Shape';
+		shapeGroup.appendChild(shapeLegend);
+
+		const shapeLabel = document.createElement('label');
+		shapeLabel.innerText = 'type ';
+		const shapeSelect = document.createElement('select');
+		for (const t of ['circle', 'sphere'] as const) {
+			const opt = document.createElement('option');
+			opt.value = t;
+			opt.innerText = t;
+			if (t === this.shapeTypeState.get('type')) opt.selected = true;
+			shapeSelect.appendChild(opt);
+		}
+		shapeSelect.addEventListener('change', () => {
+			const chosen = shapeSelect.value as 'circle' | 'sphere';
+			this.shapeTypeState.set('type', chosen);
+			if (chosen === 'sphere') {
+				this.initSphere();
+			} else {
+				this.initCircle(false);
+			}
+		});
+		shapeLabel.appendChild(shapeSelect);
+		shapeGroup.appendChild(shapeLabel);
+		this.controls.appendChild(shapeGroup);
 
 		const controlProviders = [this.generator, this.renderer];
 
