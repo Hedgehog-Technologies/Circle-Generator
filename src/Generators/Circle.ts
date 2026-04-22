@@ -5,9 +5,9 @@ import { EventEmitter } from "../EventEmitter";
 import { NeverError } from "../Errors";
 
 export enum CircleModes {
-	thick = 'thick',
 	thin = 'thin',
-	filled = 'filled',
+	thick = 'thick',
+	// filled = 'filled',
 }
 
 function filled(x: number, y: number, radius: number, ratio: number): boolean {
@@ -158,10 +158,11 @@ export class Circle implements GeneratorInterface2D, ControlAwareInterface {
 			case CircleModes.thin: {
 				return thinfilled(x, y, (bounds.maxX / 2), bounds.maxX / bounds.maxY);
 			}
-			case CircleModes.filled: {
-				return filled(x, y, (bounds.maxX / 2), bounds.maxX / bounds.maxY);
-			}
+			// case CircleModes.filled: {
+			// 	return filled(x, y, (bounds.maxX / 2), bounds.maxX / bounds.maxY);
+			// }
 			default: {
+				console.error(`Unknown mode: ${this.mode}`);
 				throw new NeverError(this.mode);
 			}
 		}
