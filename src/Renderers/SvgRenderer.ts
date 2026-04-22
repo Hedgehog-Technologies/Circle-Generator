@@ -11,10 +11,12 @@ function isSvgElement(el: Node): el is SVGElement {
 
 interface SvgRendererState {
 	scale: number;
+	showCounts: boolean;
 }
 
 export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 
+	private showCounts = true;
 	private dWidth = 5;
 	private dBorder = 1;
 	private dFull = this.dWidth + this.dBorder;
@@ -31,6 +33,7 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 	private triggerChange() {
 		this.changeEmitter.trigger({
 			scale: this.scaleSize,
+			showCounts: this.showCounts,
 		});
 	}
 
@@ -43,8 +46,15 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			this.triggerChange();
 		}, { min: "100", max: "2000" });
 
+		const showCounts = makeInputControl('Render', 'show counts', 'checkbox', this.showCounts ? '1' : '0', () => {
+			this.showCounts = showCounts.element.checked;
+			this.triggerChange();
+		});
+		showCounts.element.checked = this.showCounts;
+
 		return [
 			scale,
+			showCounts,
 
 			makeButtonControl('Download', null, 'PNG', async () => {
 				if (!this.lastSvg) {
@@ -186,6 +196,67 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		this.blocks.setValue(`${fillCount}`);
 		this.stacksOf64.setValue(`${(fillCount / 64).toFixed(1)}`);
 		this.stacksOf16.setValue(`${(fillCount / 16).toFixed(1)}`);
+
+		if (this.showCounts) {
+			const midXBlock = Math.floor(width / 2);
+			const midYBlock = Math.floor(height / 2);
+
+			// Upper triangle (y <= x): scan rows for horizontal runs
+			for (let y = minY; y < midYBlock; y++) {
+				let runStart: number | null = null;
+				let runCount = 0;
+
+				const emitHLabel = (startX: number, count: number) => {
+					const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+					const yp = (((y + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+					text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+						+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+				};
+
+				// Start at x=y to stay in the upper triangle
+				for (let x = y; x < midXBlock; x++) {
+					if (generator.isFilled(x, y)) {
+						if (runStart === null) runStart = x;
+						runCount++;
+					} else {
+						if (runStart !== null) {
+							emitHLabel(runStart, runCount);
+							runStart = null;
+							runCount = 0;
+						}
+					}
+				}
+				if (runStart !== null) emitHLabel(runStart, runCount);
+			}
+
+			// left triangle (x < y): scan columns for vertical runs
+			for (let x = minX; x < midXBlock; x++) {
+				let runStart: number | null = null;
+				let runCount = 0;
+
+				const emitVLabel = (startY: number, count: number) => {
+					const xp = (((x + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+					const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+					text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+						+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+				};
+
+				// start at y=x+1 to stay in left triangle
+				for (let y = x + 1; y < midYBlock; y++) {
+					if (generator.isFilled(x, y)) {
+						if (runStart === null) runStart = y;
+						runCount++;
+					} else {
+						if (runStart !== null) {
+							emitVLabel(runStart, runCount);
+							runStart = null;
+							runCount = 0;
+						}
+					}
+				}
+				if (runStart !== null) emitVLabel(runStart, runCount);
+			}
+		}
 
 		// vertical grid lines
 		text += this.renderGridLines(width, svgHeight, half, centerX, true);
