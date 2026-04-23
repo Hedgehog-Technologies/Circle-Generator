@@ -204,9 +204,15 @@ export class Sphere implements GeneratorInterface2D, ControlAwareInterface {
 
     this.layerSliderControl = makeInputControl('Layer', 'layer', 'range', this.layer, () => {
       this.layer = parseInt(this.layerSliderControl.element.value, 10);
-      this.updateLayerInfo();
+      // this.updateLayerInfo();
       this.triggerChange('layer');
-    }, { min: '0', max: `${this.depth - 1}`, step: '1' } as Partial<HTMLInputElement>);
+    }, { min: '0', max: `${this.depth - 1}`, step: '1' } as Partial<HTMLInputElement>, 250);
+
+    // Label updates immediately, independent of the render debounce
+    this.layerSliderControl.element.addEventListener('input', () => {
+      this.layer = parseInt(this.layerSliderControl.element.value, 10);
+      this.updateLayerInfo();
+    });
 
     this.updateLayerInfo();
   }

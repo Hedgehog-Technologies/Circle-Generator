@@ -59,7 +59,8 @@ export function makeInputControl(
 	type: string,
 	value: string | number,
 	onAlter: (val: string) => void,
-	attributes?: Partial<HTMLInputElement>
+	attributes?: Partial<HTMLInputElement>,
+	debounceMs: number = 50
 ): Control<HTMLInputElement> {
 	const controlElm = document.createElement("input");
 
@@ -75,7 +76,7 @@ export function makeInputControl(
 		clearTimeout(timeout);
 		timeout = setTimeout(() => {
 			onAlter(controlElm.value);
-		}, 50);
+		}, debounceMs);
 	};
 	controlElm.addEventListener("change", handler);
 	controlElm.addEventListener("keyup", handler);
