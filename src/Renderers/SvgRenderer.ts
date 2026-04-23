@@ -9,14 +9,16 @@ function isSvgElement(el: Node): el is SVGElement {
 	return (el as SVGElement).namespaceURI === "http://www.w3.org/2000/svg";
 }
 
+export type CountLabels = 'none' | 'topLeft' | 'all';
+
 interface SvgRendererState {
 	scale: number;
-	showCounts: boolean;
+	countLabels: CountLabels;
 }
 
 export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 
-	private showCounts = true;
+	private countLabels: CountLabels = 'topLeft';
 	private dWidth = 5;
 	private dBorder = 1;
 	private dFull = this.dWidth + this.dBorder;
@@ -28,12 +30,14 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 
 	public readonly changeEmitter = new EventEmitter<SvgRendererState>();
 
-	constructor(private scaleSize: number) { }
+	constructor(private scaleSize: number, initialCountLabels: CountLabels = 'topLeft') {
+		this.countLabels = initialCountLabels;
+	}
 
 	private triggerChange() {
 		this.changeEmitter.trigger({
 			scale: this.scaleSize,
-			showCounts: this.showCounts,
+			countLabels: this.countLabels,
 		});
 	}
 
@@ -46,15 +50,22 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			this.triggerChange();
 		}, { min: "100", max: "2000" });
 
-		const showCounts = makeInputControl('Render', 'show counts', 'checkbox', this.showCounts ? '1' : '0', () => {
-			this.showCounts = showCounts.element.checked;
-			this.triggerChange();
+		const countLabelsSelect = document.createElement('select');
+		(['none', 'topLeft', 'all'] as CountLabels[]).forEach(opt => {
+			const el = document.createElement('option');
+			el.value = opt;
+			el.text = opt === 'none' ? 'none' : opt === 'topLeft' ? 'top-left quadrant' : 'all quadrants';
+			if (opt === this.countLabels) el.selected = true;
+			countLabelsSelect.appendChild(el);
 		});
-		showCounts.element.checked = this.showCounts;
+		countLabelsSelect.addEventListener('change', () => {
+			this.countLabels = countLabelsSelect.value as CountLabels;
+			this.triggerChange();
+		})
 
 		return [
 			scale,
-			showCounts,
+			{ element: countLabelsSelect, label: 'counts', group: 'Render' },
 
 			makeButtonControl('Download', null, 'PNG', async () => {
 				if (!this.lastSvg) {
@@ -184,79 +195,135 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			</style>
 		`;
 
+		const perimeterGrid = new Uint8Array(width * height);
+		const filledGrid = new Uint8Array(width * height);
+
+		for (let y = minY; y < maxY; y++) {
+			for (let x = minX; x < maxX; x++) {
+				if (generator.isFilled(x, y)) {
+					filledGrid[(y - minY) * width + (x - minX)] = 1;
+				}
+			}
+		}
+
+		const isFilledAt = (gx: number, gy: number): boolean => {
+			if (gx < minX || gx >= maxX || gy < minY || gy >= maxY) return false;
+			return filledGrid[(gy - minY) * width + (gx - minX)] === 1;
+		}
+
+		const isPerimeterAt = (gx: number, gy: number): boolean => {
+			if (gx < minX || gx >= maxX || gy < minY || gy >= maxY) return false;
+			return perimeterGrid[(gy - minY) * width + (gx - minX)] === 1;
+		}
+
 		let fillCount = 0;
 		for (let y = minY; y < maxY; y++) {
 			for (let x = minX; x < maxX; x++) {
-				const filled = generator.isFilled(x, y);
+				const filled = isFilledAt(x, y);
 				text += this.add(x, y, width, height, filled);
-				if (filled) fillCount++;
+				if (filled) {
+					const isPerimeter =
+						!isFilledAt(x + 1, y) || !isFilledAt(x - 1, y) ||
+						!isFilledAt(x, y + 1) || !isFilledAt(x, y - 1);
+					if (isPerimeter) {
+						fillCount++;
+						if (!isFilledAt(x - 1, y) || !isFilledAt(x, y + 1)) perimeterGrid[(y - minY) * width + (x - minX)] = 1;
+					}
+				}
 			}
 		}
+
+		// let fillCount = 0;
+		// for (let y = minY; y < maxY; y++) {
+		// 	for (let x = minX; x < maxX; x++) {
+		// 		const filled = generator.isFilled(x, y);
+		// 		text += this.add(x, y, width, height, filled);
+		// 		if (filled) fillCount++;
+		// 	}
+		// }
 
 		this.blocks.setValue(`${fillCount}`);
 		this.stacksOf64.setValue(`${(fillCount / 64).toFixed(1)}`);
 		this.stacksOf16.setValue(`${(fillCount / 16).toFixed(1)}`);
 
-		if (this.showCounts) {
-			const midXBlock = Math.floor(width / 2);
-			const midYBlock = Math.floor(height / 2);
+		if (this.countLabels !== 'none') {
+    const xEnd = this.countLabels === 'topLeft' ? minX + Math.floor(width / 2) : maxX;
+    const yEnd = this.countLabels === 'topLeft' ? minY + Math.floor(height / 2) : maxY;
 
-			// Upper triangle (y <= x): scan rows for horizontal runs
-			for (let y = minY; y < midYBlock; y++) {
-				let runStart: number | null = null;
-				let runCount = 0;
+    const emitHLabel = (startX: number, row: number, count: number) => {
+        const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+        const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+        text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+            + `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+    };
 
-				const emitHLabel = (startX: number, count: number) => {
-					const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-					const yp = (((y + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-					text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-						+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-				};
+    const emitVLabel = (col: number, startY: number, count: number) => {
+        const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+        const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+        text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+            + `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+    };
 
-				// Start at x=y to stay in the upper triangle
-				for (let x = y; x < midXBlock; x++) {
-					if (generator.isFilled(x, y)) {
-						if (runStart === null) runStart = x;
-						runCount++;
-					} else {
-						if (runStart !== null) {
-							emitHLabel(runStart, runCount);
-							runStart = null;
-							runCount = 0;
-						}
-					}
-				}
-				if (runStart !== null) emitHLabel(runStart, runCount);
-			}
+    // Horizontal labels (templogic findHorizontalRuns, axes mapped: row=y, col=x)
+    // For each row, find the first filled cell, extend right only through cells
+    // not already covered by the row above. One label per row.
+    for (let y = minY; y < yEnd; y++) {
+        // Find leftmost filled cell in this row
+        let x = minX;
+        while (x < xEnd && !isFilledAt(x, y)) x++;
+        if (x >= xEnd) continue;
 
-			// left triangle (x < y): scan columns for vertical runs
-			for (let x = minX; x < midXBlock; x++) {
-				let runStart: number | null = null;
-				let runCount = 0;
+        const xStart = x;
+        let runLength = 1;
+        let nextX = x + 1;
 
-				const emitVLabel = (startY: number, count: number) => {
-					const xp = (((x + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-					const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-					text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-						+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-				};
+        if (y === minY) {
+            // First row: count all consecutive filled cells
+            while (nextX < xEnd && isFilledAt(nextX, y)) {
+                runLength++;
+                nextX++;
+            }
+        } else {
+            // Other rows: only extend while the cell in the row above is empty
+            while (nextX < xEnd && isFilledAt(nextX, y) && !isFilledAt(nextX, y - 1)) {
+                runLength++;
+                nextX++;
+            }
+        }
 
-				// start at y=x+1 to stay in left triangle
-				for (let y = x + 1; y < midYBlock; y++) {
-					if (generator.isFilled(x, y)) {
-						if (runStart === null) runStart = y;
-						runCount++;
-					} else {
-						if (runStart !== null) {
-							emitVLabel(runStart, runCount);
-							runStart = null;
-							runCount = 0;
-						}
-					}
-				}
-				if (runStart !== null) emitVLabel(runStart, runCount);
-			}
-		}
+        emitHLabel(xStart, y, runLength);
+    }
+
+    // Vertical labels (templogic findVerticalRuns, axes mapped: col=x, row=y)
+    // For each column, find the first filled cell, extend down only through cells
+    // not already covered by the column to its left. One label per column.
+    for (let x = minX; x < xEnd; x++) {
+        // Find topmost filled cell in this column
+        let y = minY;
+        while (y < yEnd && !isFilledAt(x, y)) y++;
+        if (y >= yEnd) continue;
+
+        const yStart = y;
+        let runLength = 1;
+        let nextY = y + 1;
+
+        if (x === minX) {
+            // First column: count all consecutive filled cells downward
+            while (nextY < yEnd && isFilledAt(x, nextY)) {
+                runLength++;
+                nextY++;
+            }
+        } else {
+            // Other columns: only extend while the cell in the column to the left is empty
+            while (nextY < yEnd && isFilledAt(x, nextY) && !isFilledAt(x - 1, nextY)) {
+                runLength++;
+                nextY++;
+            }
+        }
+
+        emitVLabel(x, yStart, runLength);
+    }
+}
 
 		// vertical grid lines
 		text += this.renderGridLines(width, svgHeight, half, centerX, true);

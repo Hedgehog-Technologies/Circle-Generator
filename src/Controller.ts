@@ -5,7 +5,7 @@ This notice may not be removed or altered from any source distribution.
 */
 
 import { GeneratorInterface2D } from "./Generators/GeneratorInterface2D";
-import { SvgRenderer } from "./Renderers/SvgRenderer";
+import { CountLabels, SvgRenderer } from "./Renderers/SvgRenderer";
 import { RendererInterface } from "./Renderers/RendererInterface";
 import { Circle, CircleModes } from "./Generators/Circle";
 import { Sphere, SphereModes } from "./Generators/Sphere";
@@ -99,12 +99,13 @@ export class MainController {
 	private renderer: RendererInterface;
 
 	constructor(private controls: HTMLElement, private result: HTMLElement) {
-		const svgState = this.stateMananger.get("svgRenderer", { scale: 500, });
-		const svgRenderer = new SvgRenderer(svgState.get('scale'));
+		const svgState = this.stateMananger.get("svgRenderer", { scale: 500, countLabels: 'topLeft' });
+		const svgRenderer = new SvgRenderer(svgState.get('scale'), svgState.get('countLabels') as CountLabels);
 		this.renderer = svgRenderer;
 
 		svgRenderer.changeEmitter.add((e) => {
 			svgState.set('scale', e.scale);
+			svgState.set('countLabels', e.countLabels);
 		});
 		this.renderer.changeEmitter.add(() => { this.render(); });
 
