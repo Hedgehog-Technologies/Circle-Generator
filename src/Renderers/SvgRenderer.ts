@@ -211,10 +211,10 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			return filledGrid[(gy - minY) * width + (gx - minX)] === 1;
 		}
 
-		const isPerimeterAt = (gx: number, gy: number): boolean => {
-			if (gx < minX || gx >= maxX || gy < minY || gy >= maxY) return false;
-			return perimeterGrid[(gy - minY) * width + (gx - minX)] === 1;
-		}
+		// const isPerimeterAt = (gx: number, gy: number): boolean => {
+		// 	if (gx < minX || gx >= maxX || gy < minY || gy >= maxY) return false;
+		// 	return perimeterGrid[(gy - minY) * width + (gx - minX)] === 1;
+		// }
 
 		let fillCount = 0;
 		for (let y = minY; y < maxY; y++) {
@@ -246,84 +246,107 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		this.stacksOf64.setValue(`${(fillCount / 64).toFixed(1)}`);
 		this.stacksOf16.setValue(`${(fillCount / 16).toFixed(1)}`);
 
+		
 		if (this.countLabels !== 'none') {
-    const xEnd = this.countLabels === 'topLeft' ? minX + Math.floor(width / 2) : maxX;
-    const yEnd = this.countLabels === 'topLeft' ? minY + Math.floor(height / 2) : maxY;
+			// const xEnd = this.countLabels === 'topLeft' ? minX + Math.floor(width / 2) : maxX;
+			// const yEnd = this.countLabels === 'topLeft' ? minY + Math.floor(height / 2) : maxY;
+			const midX = minX + Math.floor(width / 2);
+			const midY = minY + Math.floor(height / 2);
+			console.log('print cache initializing');
+			const countPrintBuffer = new Array<{col: number, row: number, count: number}>(width * height);
 
-    const emitHLabel = (startX: number, row: number, count: number) => {
-        const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-        const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-        text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-            + `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-    };
+			const renderQuadrantLabels = (
+				xFrom: number, xTo: number, xDir: 1 | -1,
+				yFrom: number, yTo: number, yDir: 1 | -1
+			) => {
+				const inXRange = (x: number) => xDir > 0 ? x < xTo : x >= xTo;
+				const inYRange = (y: number) => yDir > 0 ? y < yTo : y >= yTo;
+				const prevRowOffset = -yDir;
+				const prevColOffset = -xDir;
 
-    const emitVLabel = (col: number, startY: number, count: number) => {
-        const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-        const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-        text += `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-            + `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-    };
+				// Horizontal labels: one per row - find the outermost filled cell in xDir
+				// extend only through cells not already covered by the previous row
+				for (let y = yFrom; inYRange(y); y += yDir) {
+					let x = xFrom;
+					while (inXRange(x) && !isFilledAt(x, y)) x += xDir;
+					if (!inXRange(x)) continue;
 
-    // Horizontal labels (templogic findHorizontalRuns, axes mapped: row=y, col=x)
-    // For each row, find the first filled cell, extend right only through cells
-    // not already covered by the row above. One label per row.
-    for (let y = minY; y < yEnd; y++) {
-        // Find leftmost filled cell in this row
-        let x = minX;
-        while (x < xEnd && !isFilledAt(x, y)) x++;
-        if (x >= xEnd) continue;
+					const xStart = x;
+					let runLength = 1;
+					let nextX = x + xDir;
+					const isFirstRow = y === yFrom;
 
-        const xStart = x;
-        let runLength = 1;
-        let nextX = x + 1;
+					if (isFirstRow) {
+						while (inXRange(nextX) && isFilledAt(nextX, y)) {
+							runLength++;
+							nextX += xDir;
+						}
+					} else {
+						while (inXRange(nextX) && isFilledAt(nextX, y) && !isFilledAt(nextX, y + prevRowOffset)) {
+							runLength++;
+							nextX += xDir;
+						}
+					}
 
-        if (y === minY) {
-            // First row: count all consecutive filled cells
-            while (nextX < xEnd && isFilledAt(nextX, y)) {
-                runLength++;
-                nextX++;
-            }
-        } else {
-            // Other rows: only extend while the cell in the row above is empty
-            while (nextX < xEnd && isFilledAt(nextX, y) && !isFilledAt(nextX, y - 1)) {
-                runLength++;
-                nextX++;
-            }
-        }
+					// Skip trivial 1-wide step already inside vertical run
+					if (runLength === 1 && isFilledAt(xStart, y + prevRowOffset)) continue;
 
-        emitHLabel(xStart, y, runLength);
-    }
+					const key = (y - minY) * width + (xStart - minX);
+					if (countPrintBuffer[key] !== undefined && countPrintBuffer[key].count >= runLength) continue;
+					countPrintBuffer[key] = { col: xStart, row: y, count: runLength };
+					// this.getHLabel(xStart, y, runLength);
+				}
 
-    // Vertical labels (templogic findVerticalRuns, axes mapped: col=x, row=y)
-    // For each column, find the first filled cell, extend down only through cells
-    // not already covered by the column to its left. One label per column.
-    for (let x = minX; x < xEnd; x++) {
-        // Find topmost filled cell in this column
-        let y = minY;
-        while (y < yEnd && !isFilledAt(x, y)) y++;
-        if (y >= yEnd) continue;
+				// Vertical labels: one per column - find the outermost filled cell in yDir
+				// skip if it's already inside an H run, extend only through cells not covered
+				// by the previous column
+				for (let x = xFrom; inXRange(x); x += xDir) {
+					let y = yFrom;
+					while (inYRange(y) && !isFilledAt(x, y)) y += yDir;
+					if (!inYRange(y)) continue;
 
-        const yStart = y;
-        let runLength = 1;
-        let nextY = y + 1;
+					const yStart = y;
+					const isFirstCol = x === xFrom;
 
-        if (x === minX) {
-            // First column: count all consecutive filled cells downward
-            while (nextY < yEnd && isFilledAt(x, nextY)) {
-                runLength++;
-                nextY++;
-            }
-        } else {
-            // Other columns: only extend while the cell in the column to the left is empty
-            while (nextY < yEnd && isFilledAt(x, nextY) && !isFilledAt(x - 1, nextY)) {
-                runLength++;
-                nextY++;
-            }
-        }
+					// Skip if the outermost block has a filled neighbor in the prevCol direction
+					// (meaning it's interior to a horizontal run)
+					if (!isFirstCol && isFilledAt(x + prevColOffset, yStart)) continue;
 
-        emitVLabel(x, yStart, runLength);
-    }
-}
+					let runLength = 1;
+					let nextY = y + yDir;
+
+					if (isFirstCol) {
+						while (inYRange(nextY) && isFilledAt(x, nextY)) {
+							runLength++;
+							nextY += yDir;
+						}
+					} else {
+						while (inYRange(nextY) && isFilledAt(x, nextY) && !isFilledAt(x + prevColOffset, nextY)) {
+							runLength++;
+							nextY += yDir;
+						}
+					}
+
+					const key = (yStart - minY) * width + (x - minX);
+					if (countPrintBuffer[key] !== undefined && countPrintBuffer[key].count >= runLength) continue;
+					countPrintBuffer[key] = { col: x, row: yStart, count: runLength };
+					// this.getVLabel(x, yStart, runLength);
+				}
+			};
+
+			if (this.countLabels === 'topLeft') {
+				renderQuadrantLabels(minX, midX, 1, minY, midY, 1);
+			} else {
+				renderQuadrantLabels(minX, midX, 1, minY, midY, 1); // top-left
+				renderQuadrantLabels(maxX - 1, midX, -1, minY, midY, 1); // top-right
+				renderQuadrantLabels(minX, midX, 1, maxY - 1, midY, -1); // bottom-left
+				renderQuadrantLabels(maxX - 1, midX, -1, maxY - 1, midY, -1); // bottom-right
+			}
+
+			countPrintBuffer.forEach(val => text += this.getCountLabel(val.col, val.row, val.count));
+		}
+
+		
 
 		// vertical grid lines
 		text += this.renderGridLines(width, svgHeight, half, centerX, true);
@@ -333,6 +356,27 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		text += `</svg>`;
 		return text;
 	}
+
+	private getCountLabel(col: number, row: number, count: number) {
+		const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+		const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+		return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+			+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+	}
+
+	// private getHLabel(startX: number, row: number, count: number) {
+	// 			const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+	// 			const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+	// 			return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+	// 					+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+	// 		};
+
+	// private getVLabel(col: number, startY: number, count: number) {
+	// 	const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+	// 	const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
+	// 	return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
+	// 			+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+	// };
 
 	private renderGridLines(
 		count: number,
