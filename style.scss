@@ -39,7 +39,9 @@ body {
 		
 		align-self: stretch;
 
-		input[type="number"], input[type="checkbox"], select {
+		width: 225px;
+
+		input[type="number"], input[type="checkbox"], input[type="color"], select {
 			box-shadow: inset 0 0 0 2px rgb(204 204 204 / 50%);
 			outline: none;
 			border: 1px solid #ccc;
@@ -51,6 +53,11 @@ body {
 		input[type="checkbox"] {
 			width: 20px;
 			height: 20px;
+			float: right;
+		}
+
+		input[type="color"] {
+			margin: 3px 0px;
 			float: right;
 		}
 	

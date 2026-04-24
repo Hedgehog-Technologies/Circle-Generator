@@ -3,7 +3,6 @@ import { RendererInterface } from "./RendererInterface";
 import { Control, ControlAwareInterface, InfoControl, makeButtonControl, makeInputControl } from "../Controller";
 import { EventEmitter } from "../EventEmitter";
 import { xor } from "../Math";
-import { svgToCanvas } from "../Utils";
 
 function isSvgElement(el: Node): el is SVGElement {
 	return (el as SVGElement).namespaceURI === "http://www.w3.org/2000/svg";
@@ -14,6 +13,11 @@ export type CountLabels = 'none' | 'topLeft' | 'all';
 interface SvgRendererState {
 	scale: number;
 	countLabels: CountLabels;
+	colorBase: string;
+	colorAxis: string;
+	colorBuilt: string;
+	colorFont: string;
+	fontBold: boolean;
 }
 
 export class SvgRenderer implements RendererInterface, ControlAwareInterface {
@@ -30,7 +34,15 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 
 	public readonly changeEmitter = new EventEmitter<SvgRendererState>();
 
-	constructor(private scaleSize: number, initialCountLabels: CountLabels = 'topLeft') {
+	constructor(
+		private scaleSize: number,
+		initialCountLabels: CountLabels = 'topLeft',
+		private colorBase: string = '#FF0000',
+		private colorAxis: string = '#880000',
+		private colorBuilt: string = '#7711AA',
+		private colorFont: string = 'white',
+		private fontBold: boolean = false
+	) {
 		this.countLabels = initialCountLabels;
 	}
 
@@ -38,11 +50,15 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		this.changeEmitter.trigger({
 			scale: this.scaleSize,
 			countLabels: this.countLabels,
+			colorBase: this.colorBase,
+			colorAxis: this.colorAxis,
+			colorBuilt: this.colorBuilt,
+			colorFont: this.colorFont,
+			fontBold: this.fontBold
 		});
 	}
 
 	public getControls(): Control[] {
-
 		const scale = makeInputControl('Render', 'scale', 'range', this.scaleSize, (val) => {
 			this.scaleSize = parseInt(val, 10);
 			this.scale();
@@ -63,40 +79,84 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			this.triggerChange();
 		})
 
+		const colorBase = makeInputControl('Customize', 'Block - Base', 'color', this.colorBase, (val) => {
+			this.colorBase = val;
+			this.triggerChange();
+		}, {}, 250);
+
+		const colorBuilt = makeInputControl('Customize', 'Block - Built', 'color', this.colorBuilt, (val) => {
+			this.colorBuilt = val;
+			this.triggerChange();
+		}, {}, 250);
+
+		const colorAxis = makeInputControl('Customize', 'Block - Axis', 'color', this.colorAxis, (val) => {
+			this.colorAxis = val;
+			this.triggerChange();
+		}, {}, 250);
+
+		const colorFont = makeInputControl('Customize', 'Font - Color', 'color', this.colorFont, (val) => {
+			this.colorFont = val;
+			this.triggerChange();
+		}, {}, 250);
+
+		const fontBold = makeInputControl('Customize', 'Font - Bold', 'checkbox', this.fontBold ? '1' : '0', (_) => {
+			this.fontBold = fontBold.element.checked;
+			this.triggerChange();
+		});
+
 		return [
 			scale,
 			{ element: countLabelsSelect, label: 'counts', group: 'Render' },
 
-			makeButtonControl('Download', null, 'PNG', async () => {
-				if (!this.lastSvg) {
-					throw new Error('No SVG to download');
-				}
-
-				const canvas = await svgToCanvas(this.lastSvg.outerHTML);
-				const dataUrl = canvas.toDataURL();
-
-				const a = document.createElement('a');
-				a.href = dataUrl;
-				a.download = (this.lastGenerator?.getDescription() || "circle") + "-download.png";
-				document.body.appendChild(a);
-				a.click();
-			}),
-
-			makeButtonControl('Download', null, 'SVG', async () => {
-				if (!this.lastSvg) {
-					throw new Error('No SVG to download');
-				}
-
-				const a = document.createElement('a');
-				a.href = "data:image/svg+xml;base64," + btoa(this.lastSvg.outerHTML);
-				a.download = (this.lastGenerator?.getDescription() || "circle") + "-download.svg";
-				document.body.appendChild(a);
-				a.click();
-			}),
-
 			this.blocks,
 			this.stacksOf64,
 			this.stacksOf16,
+
+			colorBase,
+			colorBuilt,
+			colorAxis,
+			colorFont,
+			fontBold,
+			makeButtonControl('Customize', null, 'Reset', async () => {
+				this.colorBase = '#FF0000';
+				colorBase.element.value = this.colorBase;
+				this.colorAxis = '#880000';
+				colorAxis.element.value = this.colorAxis;
+				this.colorBuilt = '#7711AA';
+				colorBuilt.element.value = this.colorBuilt;
+				this.colorFont = 'white';
+				colorFont.element.value = this.colorFont;
+				this.fontBold = false;
+				fontBold.element.checked = this.fontBold;
+				this.triggerChange();
+			}),
+
+			// makeButtonControl('Download', null, 'PNG', async () => {
+			// 	if (!this.lastSvg) {
+			// 		throw new Error('No SVG to download');
+			// 	}
+
+			// 	const canvas = await svgToCanvas(this.lastSvg.outerHTML);
+			// 	const dataUrl = canvas.toDataURL();
+
+			// 	const a = document.createElement('a');
+			// 	a.href = dataUrl;
+			// 	a.download = (this.lastGenerator?.getDescription() || "circle") + "-download.png";
+			// 	document.body.appendChild(a);
+			// 	a.click();
+			// }),
+
+			// makeButtonControl('Download', null, 'SVG', async () => {
+			// 	if (!this.lastSvg) {
+			// 		throw new Error('No SVG to download');
+			// 	}
+
+			// 	const a = document.createElement('a');
+			// 	a.href = "data:image/svg+xml;base64," + btoa(this.lastSvg.outerHTML);
+			// 	a.download = (this.lastGenerator?.getDescription() || "circle") + "-download.svg";
+			// 	document.body.appendChild(a);
+			// 	a.click();
+			// }),
 		];
 	}
 
@@ -118,9 +178,9 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		let extra = "";
 		if (filled) {
 			if (x == midx || y == midy) {
-				color = '#880000';
+				color = this.colorAxis;
 			} else {
-				color = '#FF0000';
+				color = this.colorBase;
 			}
 
 			extra = `onclick="this.classList.toggle('built');"`;
@@ -157,10 +217,10 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		this.scale();
 	}
 
-	private lastGenerator: GeneratorInterface2D | null = null;
+	// private lastGenerator: GeneratorInterface2D | null = null;
 
 	private generateSVG(generator: GeneratorInterface2D): string {
-		this.lastGenerator = generator;
+		// this.lastGenerator = generator;
 		const { minX, maxX, minY, maxY } = generator.getBounds();
 		const width = maxX - minX;
 		const height = maxY - minY;
@@ -169,6 +229,9 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		const half = this.dWidth / 2;
 		const centerX = width / 2;
 		const centerY = height / 2;
+
+		// TODO - double click number to mark section as 'built'
+		// TODO - click and drag to marked filled squares as 'built'
 
 		let text = `<svg id="svg_circle"
 			xmlns="http://www.w3.org/2000/svg"
@@ -182,11 +245,11 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 				}
 
 				.filled:hover {
-					fill: #7711AA;
+					fill: ${this.colorBuilt};
 				}
 
 				.filled.built {
-					fill: #7711AA;
+					fill: ${this.colorBuilt};
 				}
 
 				.filled.built:hover {
@@ -233,26 +296,14 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 			}
 		}
 
-		// let fillCount = 0;
-		// for (let y = minY; y < maxY; y++) {
-		// 	for (let x = minX; x < maxX; x++) {
-		// 		const filled = generator.isFilled(x, y);
-		// 		text += this.add(x, y, width, height, filled);
-		// 		if (filled) fillCount++;
-		// 	}
-		// }
-
 		this.blocks.setValue(`${fillCount}`);
 		this.stacksOf64.setValue(`${(fillCount / 64).toFixed(1)}`);
 		this.stacksOf16.setValue(`${(fillCount / 16).toFixed(1)}`);
 
 		
 		if (this.countLabels !== 'none') {
-			// const xEnd = this.countLabels === 'topLeft' ? minX + Math.floor(width / 2) : maxX;
-			// const yEnd = this.countLabels === 'topLeft' ? minY + Math.floor(height / 2) : maxY;
 			const midX = minX + Math.floor(width / 2);
 			const midY = minY + Math.floor(height / 2);
-			console.log('print cache initializing');
 			const countPrintBuffer = new Array<{col: number, row: number, count: number}>(width * height);
 
 			const renderQuadrantLabels = (
@@ -294,7 +345,6 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 					const key = (y - minY) * width + (xStart - minX);
 					if (countPrintBuffer[key] !== undefined && countPrintBuffer[key].count >= runLength) continue;
 					countPrintBuffer[key] = { col: xStart, row: y, count: runLength };
-					// this.getHLabel(xStart, y, runLength);
 				}
 
 				// Vertical labels: one per column - find the outermost filled cell in yDir
@@ -330,7 +380,6 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 					const key = (yStart - minY) * width + (x - minX);
 					if (countPrintBuffer[key] !== undefined && countPrintBuffer[key].count >= runLength) continue;
 					countPrintBuffer[key] = { col: x, row: yStart, count: runLength };
-					// this.getVLabel(x, yStart, runLength);
 				}
 			};
 
@@ -360,23 +409,10 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 	private getCountLabel(col: number, row: number, count: number) {
 		const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
 		const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-		return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-			+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
+		return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="${this.colorFont}" `
+			+ `text-anchor="middle" dominant-baseline="middle" pointer-events="none"
+			+ ${this.fontBold ? 'style="font-weight: bold;"' : ''}">${count}</text>`;
 	}
-
-	// private getHLabel(startX: number, row: number, count: number) {
-	// 			const xp = (((startX + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-	// 			const yp = (((row + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-	// 			return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-	// 					+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-	// 		};
-
-	// private getVLabel(col: number, startY: number, count: number) {
-	// 	const xp = (((col + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-	// 	const yp = (((startY + 1) * this.dFull) - (this.dFull / 2)) + 0.5;
-	// 	return `<text x="${xp + this.dWidth / 2}" y="${yp + this.dWidth / 2}" font-size="3" fill="white" `
-	// 			+ `text-anchor="middle" dominant-baseline="middle">${count}</text>`;
-	// };
 
 	private renderGridLines(
 		count: number,
@@ -388,7 +424,7 @@ export class SvgRenderer implements RendererInterface, ControlAwareInterface {
 		let svg = '';
 		for (let i = 0; i <= count; i++) {
 			const atCenter = i === center;
-			const fill = atCenter ? '#880000' : '#bbbbbb';
+			const fill = atCenter ? this.colorAxis : '#bbbbbb';
 			const opacity = atCenter ? '1' : '.3';
 			if (vertical) {
 				svg += `<rect x="${i * this.dFull + offset}" y="0" fill="${fill}"

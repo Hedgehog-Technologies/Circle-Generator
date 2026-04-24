@@ -95,17 +95,40 @@ export class MainController {
 
 	private generator!: GeneratorInterface2D;
 	private shapeTypeState!: StateItem<{ type: 'circle' | 'sphere' }>;
+	private darkModeState = this.stateMananger.get('darkMode', { enabled: false });
 
 	private renderer: RendererInterface;
 
 	constructor(private controls: HTMLElement, private result: HTMLElement) {
-		const svgState = this.stateMananger.get("svgRenderer", { scale: 500, countLabels: 'topLeft' });
-		const svgRenderer = new SvgRenderer(svgState.get('scale'), svgState.get('countLabels') as CountLabels);
+		const svgState = this.stateMananger.get("svgRenderer", {
+			scale: 500,
+			countLabels: 'topLeft',
+			colorBase: '#FF0000',
+			colorAxis: '#880000',
+			colorBuilt: '#7711AA',
+			colorFont: 'white',
+			fontBold: false
+		});
+
+		const svgRenderer = new SvgRenderer(
+			svgState.get('scale'),
+			svgState.get('countLabels') as CountLabels,
+			svgState.get('colorBase') as string,
+			svgState.get('colorAxis') as string,
+			svgState.get('colorBuilt') as string,
+			svgState.get('colorFont') as string,
+			svgState.get('fontBold') as boolean
+		);
 		this.renderer = svgRenderer;
 
 		svgRenderer.changeEmitter.add((e) => {
 			svgState.set('scale', e.scale);
 			svgState.set('countLabels', e.countLabels);
+			svgState.set('colorBase', e.colorBase);
+			svgState.set('colorAxis', e.colorAxis);
+			svgState.set('colorBuilt', e.colorBuilt);
+			svgState.set('colorFont', e.colorFont);
+			svgState.set('fontBold', e.fontBold);
 		});
 		this.renderer.changeEmitter.add(() => { this.render(); });
 
@@ -260,13 +283,6 @@ export class MainController {
 		this.controls.innerHTML = '';
 
 		// Shape type selector
-		const shapeGroup = document.createElement('fieldset');
-		const shapeLegend = document.createElement('legend');
-		shapeLegend.innerText = 'Shape';
-		shapeGroup.appendChild(shapeLegend);
-
-		const shapeLabel = document.createElement('label');
-		shapeLabel.innerText = 'type ';
 		const shapeSelect = document.createElement('select');
 		for (const t of ['circle', 'sphere'] as const) {
 			const opt = document.createElement('option');
@@ -284,13 +300,32 @@ export class MainController {
 				this.initCircle(false);
 			}
 		});
-		shapeLabel.appendChild(shapeSelect);
-		shapeGroup.appendChild(shapeLabel);
-		this.controls.appendChild(shapeGroup);
+		const shapeControl: Control = { label: "Type", group: "Shape", element: shapeSelect };
+
+		// Dark Mode Toggle
+		const darkModeToggle = document.createElement("input");
+		darkModeToggle.type = "checkbox";
+		darkModeToggle.value = "1";
+		darkModeToggle.checked = this.darkModeState.get("enabled");
+		let timeout: ReturnType<typeof setTimeout>;
+		const handler = () => {
+			clearTimeout(timeout);
+			timeout = setTimeout(() => {
+				// TODO - more darkmode!
+			})
+		}
 
 		const controlProviders = [this.generator, this.renderer];
-
 		const controlGroups: { [key: string]: Control[] } = {};
+		
+		controlGroups[shapeControl.group] = [];
+		controlGroups[shapeControl.group].push(shapeControl);
+		// This is a dumb way to do this, but its quicker than refactoring with a weight / order system
+		controlGroups["Render"] = [];
+		controlGroups["Layer"] = [];
+		controlGroups["Details"] = [];
+		controlGroups["Customize"] = [];
+		controlGroups["Customize"].push()
 
 		for (const controlProvider of controlProviders) {
 			if (isControlAwareInterface(controlProvider)) {
