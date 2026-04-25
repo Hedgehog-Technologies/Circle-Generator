@@ -26,6 +26,17 @@ body {
 
 }
 
+body.dark {
+	background: #1E1E1E;
+	color: #CCC;
+
+	#controls > fieldset {
+		border-color: #555;
+		background: #2A2A2A;
+		color: #CCC;
+	}
+}
+
 #controls {
 	display: flex;
 	flex-wrap: wrap;

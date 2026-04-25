@@ -70,6 +70,9 @@ export function makeInputControl(
 
 	controlElm.type = type;
 	controlElm.value = `${value}`;
+	if (type === 'checkbox') {
+		controlElm.checked = value === "1";
+	}
 
 	let timeout: ReturnType<typeof setTimeout>;
 	const handler = () => {
@@ -139,6 +142,8 @@ export class MainController {
 		} else {
 			this.initCircle(true);
 		}
+
+		document.body.classList.toggle('dark', this.darkModeState.get('enabled'));
 
 		this.makeResultDraggable();
 	}
@@ -311,9 +316,14 @@ export class MainController {
 		const handler = () => {
 			clearTimeout(timeout);
 			timeout = setTimeout(() => {
-				// TODO - more darkmode!
-			})
-		}
+				this.darkModeState.set('enabled', darkModeToggle.checked);
+				document.body.classList.toggle('dark', darkModeToggle.checked);
+			}, 100);
+		};
+		darkModeToggle.addEventListener("change", handler);
+		darkModeToggle.addEventListener("keyup", handler);
+		darkModeToggle.addEventListener("input", handler);
+		const darkModeControl: Control = { label: "Dark Mode", group: "Customize", element: darkModeToggle}
 
 		const controlProviders = [this.generator, this.renderer];
 		const controlGroups: { [key: string]: Control[] } = {};
@@ -325,7 +335,7 @@ export class MainController {
 		controlGroups["Layer"] = [];
 		controlGroups["Details"] = [];
 		controlGroups["Customize"] = [];
-		controlGroups["Customize"].push()
+		controlGroups["Customize"].push(darkModeControl);
 
 		for (const controlProvider of controlProviders) {
 			if (isControlAwareInterface(controlProvider)) {
