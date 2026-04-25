@@ -3,6 +3,7 @@
 /node_modules/
 /lib/
 /dist/
+/html/
 
 *.css
 *.css.map

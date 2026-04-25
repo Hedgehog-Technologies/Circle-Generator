@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  circle-generator:
+    image: nginx:alpine
+    container_name: circle-generator
+    restart: unless-stopped
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    networks:
+      - circle-gen-net
+
+networks:
+  circle-gen-net:
+    external: true

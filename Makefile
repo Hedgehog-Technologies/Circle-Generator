@@ -12,10 +12,20 @@ dist: clean lib/generator.js style.css index.html
 	cp lib/generator.js dist/lib/generator.js
 	cp style.css index.html dist
 
+PHONY: package
+package: dist
+	rm -rf ./html
+	mkdir -p ./html
+
+	cp -r dist/* ./html
+
+	@echo "Docker content ready in ./html"
+
 .PHONY: clean
 clean:
 	rm -rf dist
 	rm -rf lib style.css
+	rm -rf ./html
 
 .PHONY: lint
 lint:
