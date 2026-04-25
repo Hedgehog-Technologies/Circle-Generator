@@ -332,7 +332,7 @@ export class MainController {
 		controlGroups[shapeControl.group].push(shapeControl);
 		// This is a dumb way to do this, but its quicker than refactoring with a weight / order system
 		controlGroups["Render"] = [];
-		controlGroups["Layer"] = [];
+		if (this.shapeTypeState.get('type') === 'sphere') controlGroups["Layer"] = [];
 		controlGroups["Details"] = [];
 		controlGroups["Customize"] = [];
 		controlGroups["Customize"].push(darkModeControl);
